@@ -5,16 +5,18 @@
 
 import { ScanResult, ScannedFile, ConflictLog } from './types';
 
-export function processFiles(fileList: FileList): ScanResult {
+export function processFiles(fileList: FileList | File[]): ScanResult {
   const files: ScannedFile[] = [];
   const conflicts: ConflictLog[] = [];
   const nameCounts: Record<string, number> = {};
   const subfolders = new Set<string>();
+  let totalSize = 0;
 
-  // Convert FileList to Array and sort by path for consistency
+  // Convert to Array and sort by path for consistency
   const fileArray = Array.from(fileList);
 
   for (const file of fileArray) {
+    totalSize += file.size;
     const path = file.webkitRelativePath || file.name;
     const pathParts = path.split('/');
     
@@ -59,6 +61,7 @@ export function processFiles(fileList: FileList): ScanResult {
   return {
     files,
     subfolderCount: subfolders.size,
-    conflicts
+    conflicts,
+    totalSize
   };
 }

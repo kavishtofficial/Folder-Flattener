@@ -20,4 +20,5 @@ export interface ScanResult {
   files: ScannedFile[];
   subfolderCount: number;
   conflicts: ConflictLog[];
+  totalSize: number;
 }

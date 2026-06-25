@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useState, useRef, ChangeEvent } from 'react';
+import { useState, useRef, ChangeEvent, DragEvent } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   FolderDown, 
@@ -25,6 +25,7 @@ export default function App() {
   const [scanResult, setScanResult] = useState<ScanResult | null>(null);
   const [outputName, setOutputName] = useState('Flattened_Archive_2026');
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
   const [isZipping, setIsZipping] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -48,6 +49,76 @@ export default function App() {
     setOutputName('Flattened_Archive_2026');
     setSuccessMessage(null);
     if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const handleDragOver = (e: DragEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = () => {
+    setIsDragging(false);
+  };
+
+  const handleDrop = async (e: DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    
+    const items = e.dataTransfer.items;
+    if (!items || items.length === 0) return;
+
+    setIsProcessing(true);
+    setSuccessMessage(null);
+
+    const files: File[] = [];
+    
+    const traverse = async (entry: any, path: string = "") => {
+      if (entry.isFile) {
+        const file = await new Promise<File>((resolve) => entry.file(resolve));
+        Object.defineProperty(file, 'webkitRelativePath', {
+          value: path + file.name,
+          writable: false,
+          configurable: true
+        });
+        files.push(file);
+      } else if (entry.isDirectory) {
+        const reader = entry.createReader();
+        const entries = await new Promise<any[]>((resolve) => {
+          const allEntries: any[] = [];
+          const readEntries = () => {
+            reader.readEntries((results: any[]) => {
+              if (results.length) {
+                allEntries.push(...results);
+                readEntries();
+              } else {
+                resolve(allEntries);
+              }
+            });
+          };
+          readEntries();
+        });
+        
+        for (const childEntry of entries) {
+          await traverse(childEntry, path + entry.name + "/");
+        }
+      }
+    };
+
+    const promises = [];
+    for (let i = 0; i < items.length; i++) {
+      const entry = items[i].webkitGetAsEntry();
+      if (entry) {
+        promises.push(traverse(entry));
+      }
+    }
+
+    await Promise.all(promises);
+    
+    if (files.length > 0) {
+      const result = processFiles(files);
+      setScanResult(result);
+    }
+    setIsProcessing(false);
   };
 
   const handleDownload = async () => {
@@ -133,12 +204,27 @@ export default function App() {
 
             <button 
               onClick={() => fileInputRef.current?.click()}
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              onDrop={handleDrop}
               disabled={isProcessing}
-              className="w-full py-8 border-2 border-dashed border-slate-200 rounded-xl flex flex-col items-center justify-center space-y-2 hover:border-slate-400 hover:bg-slate-50 transition-all disabled:opacity-50"
+              className={`w-full py-8 border-2 border-dashed rounded-xl flex flex-col items-center justify-center space-y-2 transition-all disabled:opacity-50 ${
+                isDragging 
+                  ? 'border-slate-900 bg-slate-50 scale-[1.02]' 
+                  : 'border-slate-200 hover:border-slate-400 hover:bg-slate-50'
+              }`}
             >
-              <span className="text-2xl">{isProcessing ? <Loader2 className="animate-spin text-slate-400" /> : '📂'}</span>
+              <span className="text-2xl">
+                {isProcessing ? (
+                  <Loader2 className="animate-spin text-slate-400" />
+                ) : isDragging ? (
+                  '📥'
+                ) : (
+                  '📂'
+                )}
+              </span>
               <span className="text-sm font-semibold text-slate-700">
-                {isProcessing ? 'Scanning...' : 'Select Parent Folder'}
+                {isProcessing ? 'Scanning...' : isDragging ? 'Release to Scan' : 'Select or Drop Folder'}
               </span>
             </button>
             
@@ -172,6 +258,7 @@ export default function App() {
                   fileCount={scanResult.files.length} 
                   folderCount={scanResult.subfolderCount}
                   conflictCount={scanResult.conflicts.length}
+                  totalSize={scanResult.totalSize}
                 />
               )}
             </div>
