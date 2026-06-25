@@ -1,0 +1,8 @@
+{
+  "name": "Folder Flattener",
+  "description": "A simple tool to recursively scan nested folders and download all files in a single flattened ZIP archive.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
