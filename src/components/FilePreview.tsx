@@ -5,6 +5,7 @@
 
 import React from 'react';
 import { ScannedFile } from '../types';
+import { AlertTriangle } from 'lucide-react';
 
 interface FilePreviewProps {
   files: ScannedFile[];
@@ -29,7 +30,7 @@ export const FilePreview: React.FC<FilePreviewProps> = ({ files }) => {
             <div 
               key={i} 
               className={`px-6 py-4 flex items-center hover:bg-slate-50 transition-colors ${
-                f.isRenamed ? 'bg-orange-50/30 border-l-4 border-orange-400' : ''
+                f.isRenamed ? 'bg-yellow-50/80 border-l-4 border-yellow-400' : ''
               }`}
             >
               <span className="text-2xl mr-4">{f.file.type.startsWith('image/') ? '🖼️' : '📄'}</span>
@@ -37,13 +38,14 @@ export const FilePreview: React.FC<FilePreviewProps> = ({ files }) => {
                 <div className="text-sm font-semibold text-slate-800 truncate">
                   {f.flattenedName}
                 </div>
-                <div className={`text-[11px] truncate ${f.isRenamed ? 'text-orange-500 font-medium italic' : 'text-slate-400'}`}>
+                <div className={`text-[11px] truncate ${f.isRenamed ? 'text-yellow-700 font-medium italic' : 'text-slate-400'}`}>
                   {f.isRenamed ? `Renamed from: ${f.originalPath}` : f.originalPath}
                 </div>
               </div>
               {f.isRenamed ? (
-                <div className="ml-4 flex items-center text-[9px] font-bold text-orange-600 bg-orange-100 px-2 py-0.5 rounded uppercase whitespace-nowrap">
-                  Duplicate Found
+                <div className="ml-4 flex items-center gap-1 text-[9px] font-bold text-yellow-700 bg-yellow-100 px-2 py-1 rounded uppercase whitespace-nowrap">
+                  <AlertTriangle size={10} />
+                  Collision
                 </div>
               ) : (
                 <div className="ml-4 text-[10px] font-mono text-slate-400 px-2 py-1 bg-slate-100 rounded whitespace-nowrap">
