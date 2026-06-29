@@ -15,11 +15,11 @@ export function processFiles(fileList: FileList | File[]): ScanResult {
   // Convert to Array and sort by path for consistency
   const fileArray = Array.from(fileList);
 
-  const MAX_FILENAME_LENGTH = 150; // Safe limit for most systems within a ZIP
+  const MAX_FILENAME_LENGTH = 100; // Shorter limit for better system compatibility
 
   for (const file of fileArray) {
     totalSize += file.size;
-    const path = file.webkitRelativePath || file.name;
+    const path = file.webkitRelativePath || (file as any).customPath || file.name;
     const pathParts = path.split('/');
     
     // Track subfolders
@@ -30,19 +30,24 @@ export function processFiles(fileList: FileList | File[]): ScanResult {
     const originalName = file.name;
     let isRenamed = false;
     
-    // 1. Initial Shortening
+    // 1. Clean illegal characters
+    // Remove characters that are illegal on Windows/MacOS/Linux file systems
+    const cleanedName = originalName.replace(/[<>:"/\\|?*]/g, '_');
+    if (cleanedName !== originalName) isRenamed = true;
+
+    // 2. Initial Shortening
     let baseName: string;
     let extension: string;
-    const dotIndex = originalName.lastIndexOf('.');
+    const dotIndex = cleanedName.lastIndexOf('.');
     if (dotIndex !== -1) {
-      baseName = originalName.substring(0, dotIndex);
-      extension = originalName.substring(dotIndex);
+      baseName = cleanedName.substring(0, dotIndex);
+      extension = cleanedName.substring(dotIndex);
     } else {
-      baseName = originalName;
+      baseName = cleanedName;
       extension = '';
     }
 
-    let candidateName = originalName;
+    let candidateName = cleanedName;
     if (candidateName.length > MAX_FILENAME_LENGTH) {
       isRenamed = true;
       const allowedBaseLength = Math.max(10, MAX_FILENAME_LENGTH - extension.length);
@@ -50,7 +55,7 @@ export function processFiles(fileList: FileList | File[]): ScanResult {
       candidateName = baseName + extension;
     }
 
-    // 2. Collision Handling
+    // 3. Collision Handling
     let finalName = candidateName;
     if (nameCounts[finalName] !== undefined) {
       isRenamed = true;

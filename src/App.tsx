@@ -75,11 +75,8 @@ export default function App() {
     const traverse = async (entry: any, path: string = "") => {
       if (entry.isFile) {
         const file = await new Promise<File>((resolve) => entry.file(resolve));
-        Object.defineProperty(file, 'webkitRelativePath', {
-          value: path + file.name,
-          writable: false,
-          configurable: true
-        });
+        // Use a custom property instead of modifying protected webkitRelativePath
+        (file as any).customPath = path + file.name;
         files.push(file);
       } else if (entry.isDirectory) {
         const reader = entry.createReader();
