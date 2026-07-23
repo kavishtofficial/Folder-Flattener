@@ -9,6 +9,7 @@ export interface ScannedFile {
   flattenedName: string;
   file: File;
   isRenamed: boolean;
+  isBulkRenamed?: boolean;
 }
 
 export interface ConflictLog {

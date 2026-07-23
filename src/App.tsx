@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
+import * as XLSX from 'xlsx';
 import { ScanResult } from './types';
 import { processFiles } from './utils';
 import { StatsDisplay } from './components/StatsDisplay';
@@ -28,7 +29,9 @@ export default function App() {
   const [isDragging, setIsDragging] = useState(false);
   const [isZipping, setIsZipping] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [bulkRenameCount, setBulkRenameCount] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const renameInputRef = useRef<HTMLInputElement>(null);
 
   const handleFolderSelect = (e: ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -48,7 +51,66 @@ export default function App() {
     setScanResult(null);
     setOutputName('Flattened_Archive_2026');
     setSuccessMessage(null);
+    setBulkRenameCount(0);
     if (fileInputRef.current) fileInputRef.current.value = '';
+    if (renameInputRef.current) renameInputRef.current.value = '';
+  };
+
+  const handleBulkRename = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !scanResult) return;
+    
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const data = new Uint8Array(event.target?.result as ArrayBuffer);
+        const workbook = XLSX.read(data, { type: 'array' });
+        const firstSheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[firstSheetName];
+        
+        const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 }) as string[][];
+        
+        let renamedCount = 0;
+        const newScanResult = { ...scanResult, files: [...scanResult.files] };
+        
+        const renameMap = new Map<string, string>();
+        // Check if first row is header
+        let startIndex = 0;
+        if (jsonData.length > 0 && String(jsonData[0][0]).toLowerCase().includes('old')) {
+            startIndex = 1;
+        }
+
+        for (let i = startIndex; i < jsonData.length; i++) {
+          const row = jsonData[i];
+          if (row.length >= 2) {
+            const oldName = String(row[0]).trim();
+            const newName = String(row[1]).trim();
+            if (oldName && newName && oldName !== newName) {
+              renameMap.set(oldName, newName);
+            }
+          }
+        }
+        
+        for (let i = 0; i < newScanResult.files.length; i++) {
+          const f = newScanResult.files[i];
+          if (renameMap.has(f.originalName)) {
+            newScanResult.files[i] = { ...f, flattenedName: renameMap.get(f.originalName)!, isBulkRenamed: true };
+            renamedCount++;
+          } else if (renameMap.has(f.flattenedName)) {
+            newScanResult.files[i] = { ...f, flattenedName: renameMap.get(f.flattenedName)!, isBulkRenamed: true };
+            renamedCount++;
+          }
+        }
+        
+        setScanResult(newScanResult);
+        setBulkRenameCount(renamedCount);
+      } catch (error) {
+        console.error("Error parsing Excel file", error);
+        alert("Failed to parse the Excel/CSV file. Please ensure it has two columns: Old Name and New Name.");
+      }
+    };
+    reader.readAsArrayBuffer(file);
+    if (renameInputRef.current) renameInputRef.current.value = '';
   };
 
   const handleDragOver = (e: DragEvent) => {
@@ -172,7 +234,7 @@ export default function App() {
         <FilePreview files={scanResult?.files || []} />
 
         {/* Right Pane: Actions & Controls */}
-        <aside className="w-80 flex flex-col space-y-6">
+        <aside className="w-80 shrink-0 flex flex-col space-y-6 overflow-y-auto custom-scrollbar pr-2 pb-2">
           
           {/* Control: Folder Select */}
           <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
@@ -229,6 +291,39 @@ export default function App() {
               <p className="mt-3 text-[10px] text-center text-slate-400 italic truncate">
                 Ready to flatten {scanResult.files.length} files
               </p>
+            )}
+          </div>
+
+          {/* Control: Bulk Rename */}
+          <div className={`bg-white border border-slate-200 rounded-2xl p-6 shadow-sm transition-all ${!scanResult ? 'opacity-50 pointer-events-none' : ''}`}>
+            <h3 className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">Bulk Rename (Optional)</h3>
+            <p className="text-[10px] text-slate-500 mb-4 leading-relaxed">
+              Upload an Excel (.xlsx) or CSV file with two columns to rename files in bulk. 
+              <br/><span className="font-semibold text-slate-700">Col A:</span> Old Name &nbsp;|&nbsp; <span className="font-semibold text-slate-700">Col B:</span> New Name
+            </p>
+            
+            <input
+              type="file"
+              accept=".csv, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/vnd.ms-excel"
+              className="hidden"
+              ref={renameInputRef}
+              onChange={handleBulkRename}
+            />
+
+            <button 
+              onClick={() => renameInputRef.current?.click()}
+              disabled={!scanResult}
+              className="w-full py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl flex items-center justify-center space-x-2 transition-all font-semibold text-sm disabled:opacity-50 border border-slate-200"
+            >
+              <span>📄</span>
+              <span>Upload Mapping File</span>
+            </button>
+            
+            {bulkRenameCount > 0 && (
+              <div className="mt-3 flex items-center justify-center space-x-2 text-[10px] font-bold text-green-600 uppercase tracking-wider bg-green-50 p-2 rounded-lg border border-green-100">
+                <CheckCircle2 size={12} />
+                <span>Renamed {bulkRenameCount} files</span>
+              </div>
             )}
           </div>
 

@@ -5,7 +5,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { ScannedFile } from '../types';
-import { AlertTriangle, Filter } from 'lucide-react';
+import { AlertTriangle, Filter, CheckCircle2 } from 'lucide-react';
 
 interface FilePreviewProps {
   files: ScannedFile[];
@@ -88,7 +88,7 @@ export const FilePreview: React.FC<FilePreviewProps> = ({ files }) => {
             <div 
               key={i} 
               className={`px-6 py-4 flex items-center hover:bg-slate-50 transition-colors ${
-                f.isRenamed ? 'bg-yellow-50/80 border-l-4 border-yellow-400' : ''
+                f.isRenamed || f.isBulkRenamed ? (f.isBulkRenamed ? 'bg-blue-50/50 border-l-4 border-blue-400' : 'bg-yellow-50/80 border-l-4 border-yellow-400') : ''
               }`}
             >
               <span className="text-2xl mr-4">
@@ -98,11 +98,16 @@ export const FilePreview: React.FC<FilePreviewProps> = ({ files }) => {
                 <div className="text-sm font-semibold text-slate-800 truncate">
                   {f.flattenedName}
                 </div>
-                <div className={`text-[11px] truncate ${f.isRenamed ? 'text-yellow-700 font-medium italic' : 'text-slate-400'}`}>
-                  {f.isRenamed ? `Renamed from: ${f.originalPath}` : f.originalPath}
+                <div className={`text-[11px] truncate ${f.isRenamed || f.isBulkRenamed ? (f.isBulkRenamed ? 'text-blue-700 font-medium italic' : 'text-yellow-700 font-medium italic') : 'text-slate-400'}`}>
+                  {f.isRenamed || f.isBulkRenamed ? `Renamed from: ${f.originalPath}` : f.originalPath}
                 </div>
               </div>
-              {f.isRenamed ? (
+              {f.isBulkRenamed ? (
+                <div className="ml-4 flex items-center gap-1 text-[9px] font-bold text-blue-700 bg-blue-100 px-2 py-1 rounded uppercase whitespace-nowrap">
+                  <CheckCircle2 size={10} />
+                  Bulk Renamed
+                </div>
+              ) : f.isRenamed ? (
                 <div className="ml-4 flex items-center gap-1 text-[9px] font-bold text-yellow-700 bg-yellow-100 px-2 py-1 rounded uppercase whitespace-nowrap">
                   <AlertTriangle size={10} />
                   Collision
