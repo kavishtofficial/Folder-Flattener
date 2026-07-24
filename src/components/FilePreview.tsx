@@ -41,7 +41,7 @@ export const FilePreview: React.FC<FilePreviewProps> = ({ files }) => {
   }, [files, filter]);
 
   return (
-    <section className="flex-1 flex flex-col bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+    <section className="flex-1 min-h-0 flex flex-col bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
       <div className="px-6 py-4 border-b border-slate-100 flex flex-col gap-4 bg-slate-50/50">
         <div className="flex justify-between items-center">
           <h2 className="text-[11px] font-bold text-slate-700 uppercase tracking-widest">Found Files Preview</h2>

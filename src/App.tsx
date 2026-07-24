@@ -73,7 +73,15 @@ export default function App() {
         let renamedCount = 0;
         const newScanResult = { ...scanResult, files: [...scanResult.files] };
         
+        const normalize = (str: string) => str.trim().toLowerCase().replace(/\s+/g, ' ');
+        const removeExtension = (str: string) => {
+          const dotIndex = str.lastIndexOf('.');
+          return dotIndex !== -1 ? str.substring(0, dotIndex) : str;
+        };
+
         const renameMap = new Map<string, string>();
+        const renameMapNoExt = new Map<string, string>();
+        
         // Check if first row is header
         let startIndex = 0;
         if (jsonData.length > 0 && String(jsonData[0][0]).toLowerCase().includes('old')) {
@@ -85,20 +93,47 @@ export default function App() {
           if (row.length >= 2) {
             const oldName = String(row[0]).trim();
             const newName = String(row[1]).trim();
-            if (oldName && newName && oldName !== newName) {
-              renameMap.set(oldName, newName);
+            if (oldName && newName) {
+              const normOld = normalize(oldName);
+              renameMap.set(normOld, newName);
+              renameMapNoExt.set(removeExtension(normOld), newName);
             }
           }
         }
         
         for (let i = 0; i < newScanResult.files.length; i++) {
           const f = newScanResult.files[i];
-          if (renameMap.has(f.originalName)) {
-            newScanResult.files[i] = { ...f, flattenedName: renameMap.get(f.originalName)!, isBulkRenamed: true };
-            renamedCount++;
-          } else if (renameMap.has(f.flattenedName)) {
-            newScanResult.files[i] = { ...f, flattenedName: renameMap.get(f.flattenedName)!, isBulkRenamed: true };
-            renamedCount++;
+          const normOrig = normalize(f.originalName);
+          const normFlat = normalize(f.flattenedName);
+          const normOrigPath = normalize(f.originalPath);
+          const normOrigNoExt = removeExtension(normOrig);
+          const normFlatNoExt = removeExtension(normFlat);
+
+          let matchedNewName: string | undefined;
+
+          if (renameMap.has(normOrig)) {
+            matchedNewName = renameMap.get(normOrig);
+          } else if (renameMap.has(normFlat)) {
+            matchedNewName = renameMap.get(normFlat);
+          } else if (renameMap.has(normOrigPath)) {
+            matchedNewName = renameMap.get(normOrigPath);
+          } else if (renameMapNoExt.has(normOrigNoExt)) {
+            matchedNewName = renameMapNoExt.get(normOrigNoExt);
+          } else if (renameMapNoExt.has(normFlatNoExt)) {
+            matchedNewName = renameMapNoExt.get(normFlatNoExt);
+          }
+          
+          if (matchedNewName) {
+            // If the new name doesn't have an extension but the original did, append it
+            const origExt = f.originalName.lastIndexOf('.') !== -1 ? f.originalName.substring(f.originalName.lastIndexOf('.')) : '';
+            if (origExt && !matchedNewName.toLowerCase().endsWith(origExt.toLowerCase())) {
+              matchedNewName += origExt;
+            }
+            
+            if (matchedNewName !== f.flattenedName) {
+              newScanResult.files[i] = { ...f, flattenedName: matchedNewName, isBulkRenamed: true };
+              renamedCount++;
+            }
           }
         }
         
