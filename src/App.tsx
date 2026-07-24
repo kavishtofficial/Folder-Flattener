@@ -268,7 +268,7 @@ export default function App() {
           </div>
           <div>
             <h1 className="text-xl font-bold tracking-tight text-slate-900">Folder Flattener</h1>
-            <p className="text-[10px] text-slate-500 uppercase tracking-widest font-bold">Local Client-Side Utility</p>
+            <p className="text-[10px] text-slate-500 uppercase tracking-widest font-bold">By VangaVault</p>
           </div>
         </div>
         <div className="flex space-x-4 items-center">
