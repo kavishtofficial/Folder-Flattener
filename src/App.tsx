@@ -24,12 +24,14 @@ import { FilePreview } from './components/FilePreview';
 
 export default function App() {
   const [scanResult, setScanResult] = useState<ScanResult | null>(null);
+  const [originalScanResult, setOriginalScanResult] = useState<ScanResult | null>(null);
   const [outputName, setOutputName] = useState('Flattened_Archive_2026');
   const [isProcessing, setIsProcessing] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [isZipping, setIsZipping] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [bulkRenameCount, setBulkRenameCount] = useState(0);
+  const [flattenFolders, setFlattenFolders] = useState(true);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const renameInputRef = useRef<HTMLInputElement>(null);
 
@@ -43,12 +45,14 @@ export default function App() {
     setTimeout(() => {
       const result = processFiles(files);
       setScanResult(result);
+      setOriginalScanResult(result);
       setIsProcessing(false);
     }, 300);
   };
 
   const handleReset = () => {
     setScanResult(null);
+    setOriginalScanResult(null);
     setOutputName('Flattened_Archive_2026');
     setSuccessMessage(null);
     setBulkRenameCount(0);
@@ -58,7 +62,7 @@ export default function App() {
 
   const handleBulkRename = async (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file || !scanResult) return;
+    if (!file || !originalScanResult) return;
     
     const reader = new FileReader();
     reader.onload = (event) => {
@@ -71,13 +75,13 @@ export default function App() {
         const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 }) as string[][];
         
         let renamedCount = 0;
-        const newScanResult = { ...scanResult, files: [...scanResult.files] };
+        const newScanResult = { ...originalScanResult, files: [...originalScanResult.files] };
         
-        const normalize = (str: string) => str.trim().toLowerCase().replace(/\s+/g, ' ');
         const removeExtension = (str: string) => {
           const dotIndex = str.lastIndexOf('.');
           return dotIndex !== -1 ? str.substring(0, dotIndex) : str;
         };
+        const normalize = (str: string) => str.toLowerCase().replace(/[^a-z0-9]/g, '');
 
         const renameMap = new Map<string, string>();
         const renameMapNoExt = new Map<string, string>();
@@ -95,8 +99,9 @@ export default function App() {
             const newName = String(row[1]).trim();
             if (oldName && newName) {
               const normOld = normalize(oldName);
+              const normOldNoExt = normalize(removeExtension(oldName));
               renameMap.set(normOld, newName);
-              renameMapNoExt.set(removeExtension(normOld), newName);
+              renameMapNoExt.set(normOldNoExt, newName);
             }
           }
         }
@@ -106,8 +111,8 @@ export default function App() {
           const normOrig = normalize(f.originalName);
           const normFlat = normalize(f.flattenedName);
           const normOrigPath = normalize(f.originalPath);
-          const normOrigNoExt = removeExtension(normOrig);
-          const normFlatNoExt = removeExtension(normFlat);
+          const normOrigNoExt = normalize(removeExtension(f.originalName));
+          const normFlatNoExt = normalize(removeExtension(f.flattenedName));
 
           let matchedNewName: string | undefined;
 
@@ -211,6 +216,7 @@ export default function App() {
     if (files.length > 0) {
       const result = processFiles(files);
       setScanResult(result);
+      setOriginalScanResult(result);
     }
     setIsProcessing(false);
   };
@@ -225,7 +231,18 @@ export default function App() {
     if (!folder) return;
 
     for (const f of scanResult.files) {
-      folder.file(f.flattenedName, f.file);
+      if (flattenFolders) {
+        folder.file(f.flattenedName, f.file);
+      } else {
+        const pathParts = f.originalPath.split('/');
+        if (pathParts.length > 1) {
+          pathParts.pop(); // remove original filename
+          const dirPath = pathParts.join('/');
+          folder.file(`${dirPath}/${f.flattenedName}`, f.file);
+        } else {
+          folder.file(f.flattenedName, f.file);
+        }
+      }
     }
 
     try {
@@ -331,7 +348,21 @@ export default function App() {
 
           {/* Control: Bulk Rename */}
           <div className={`bg-white border border-slate-200 rounded-2xl p-6 shadow-sm transition-all ${!scanResult ? 'opacity-50 pointer-events-none' : ''}`}>
-            <h3 className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">Bulk Rename (Optional)</h3>
+            <div className="flex justify-between items-center mb-2">
+              <h3 className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Bulk Rename (Optional)</h3>
+              {bulkRenameCount > 0 && (
+                <button 
+                  onClick={() => {
+                    setScanResult(originalScanResult);
+                    setBulkRenameCount(0);
+                    if (renameInputRef.current) renameInputRef.current.value = '';
+                  }}
+                  className="text-[10px] font-bold text-red-500 hover:text-red-700 uppercase tracking-wider transition-colors"
+                >
+                  Reset
+                </button>
+              )}
+            </div>
             <p className="text-[10px] text-slate-500 mb-4 leading-relaxed">
               Upload an Excel (.xlsx) or CSV file with two columns to rename files in bulk. 
               <br/><span className="font-semibold text-slate-700">Col A:</span> Old Name &nbsp;|&nbsp; <span className="font-semibold text-slate-700">Col B:</span> New Name
@@ -380,6 +411,19 @@ export default function App() {
                 </div>
               </div>
 
+              <div className="flex items-center space-x-2 mt-4">
+                <input 
+                  type="checkbox" 
+                  id="flattenToggle"
+                  checked={flattenFolders}
+                  onChange={(e) => setFlattenFolders(e.target.checked)}
+                  className="w-4 h-4 text-slate-900 rounded border-slate-300 focus:ring-slate-900"
+                />
+                <label htmlFor="flattenToggle" className="text-sm font-semibold text-slate-700 select-none cursor-pointer">
+                  Flatten into single folder
+                </label>
+              </div>
+
               {scanResult && (
                 <StatsDisplay 
                   fileCount={scanResult.files.length} 
@@ -396,7 +440,7 @@ export default function App() {
                 disabled={!scanResult || isZipping}
                 className="w-full bg-slate-900 text-white py-4 rounded-xl font-bold shadow-lg hover:bg-slate-800 active:transform active:scale-[0.98] transition-all flex items-center justify-center space-x-2 disabled:bg-slate-200 disabled:shadow-none"
               >
-                <span>{isZipping ? 'Processing...' : 'Flatten & Download'}</span>
+                <span>{isZipping ? 'Processing...' : (flattenFolders ? 'Flatten & Download' : 'Download Folder')}</span>
                 {isZipping ? <RefreshCcw className="animate-spin text-white" size={18} /> : <span className="text-lg">🚀</span>}
               </button>
               
