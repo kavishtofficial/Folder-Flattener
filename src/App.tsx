@@ -78,10 +78,10 @@ export default function App() {
         const newScanResult = { ...originalScanResult, files: [...originalScanResult.files] };
         
         const removeExtension = (str: string) => {
-          const dotIndex = str.lastIndexOf('.');
-          return dotIndex !== -1 ? str.substring(0, dotIndex) : str;
+          const match = str.match(/(.*)(\.[a-z0-9]{1,5})$/i);
+          return match ? match[1] : str;
         };
-        const normalize = (str: string) => str.toLowerCase().replace(/[^a-z0-9]/g, '');
+        const normalize = (str: string) => (str || '').toLowerCase().replace(/[^a-z0-9]/g, '');
 
         const renameMap = new Map<string, string>();
         const renameMapNoExt = new Map<string, string>();
@@ -95,8 +95,16 @@ export default function App() {
         for (let i = startIndex; i < jsonData.length; i++) {
           const row = jsonData[i];
           if (row.length >= 2) {
-            const oldName = String(row[0]).trim();
-            const newName = String(row[1]).trim();
+            let oldName = '';
+            let newName = '';
+            if (row.length === 2) {
+              oldName = String(row[0]).trim();
+              newName = String(row[1]).trim();
+            } else {
+              // Handle unquoted CSVs where filenames with commas were split into multiple columns
+              oldName = row.slice(0, -1).join(',').trim();
+              newName = String(row[row.length - 1]).trim();
+            }
             if (oldName && newName) {
               const normOld = normalize(oldName);
               const normOldNoExt = normalize(removeExtension(oldName));
