@@ -18,7 +18,7 @@ import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
 import * as XLSX from 'xlsx';
 import { ScanResult } from './types';
-import { processFiles } from './utils';
+import { processFiles, truncateFilename } from './utils';
 import { StatsDisplay } from './components/StatsDisplay';
 import { FilePreview } from './components/FilePreview';
 
@@ -106,10 +106,17 @@ export default function App() {
               newName = String(row[row.length - 1]).trim();
             }
             if (oldName && newName) {
+              const { candidateName: truncatedOld } = truncateFilename(oldName);
+              
               const normOld = normalize(oldName);
+              const normTruncOld = normalize(truncatedOld);
               const normOldNoExt = normalize(removeExtension(oldName));
+              const normTruncOldNoExt = normalize(removeExtension(truncatedOld));
+              
               renameMap.set(normOld, newName);
+              renameMap.set(normTruncOld, newName);
               renameMapNoExt.set(normOldNoExt, newName);
+              renameMapNoExt.set(normTruncOldNoExt, newName);
             }
           }
         }

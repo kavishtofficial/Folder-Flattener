@@ -10,6 +10,8 @@ export interface ScannedFile {
   file: File;
   isRenamed: boolean;
   isBulkRenamed?: boolean;
+  isCollision?: boolean;
+  isTruncated?: boolean;
 }
 
 export interface ConflictLog {

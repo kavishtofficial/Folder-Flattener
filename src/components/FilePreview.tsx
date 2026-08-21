@@ -107,10 +107,20 @@ export const FilePreview: React.FC<FilePreviewProps> = ({ files }) => {
                   <CheckCircle2 size={10} />
                   Bulk Renamed
                 </div>
+              ) : f.isCollision ? (
+                <div className="ml-4 flex items-center gap-1 text-[9px] font-bold text-red-700 bg-red-100 px-2 py-1 rounded uppercase whitespace-nowrap">
+                  <AlertTriangle size={10} />
+                  Collision
+                </div>
+              ) : f.isTruncated ? (
+                <div className="ml-4 flex items-center gap-1 text-[9px] font-bold text-yellow-700 bg-yellow-100 px-2 py-1 rounded uppercase whitespace-nowrap">
+                  <AlertTriangle size={10} />
+                  Truncated
+                </div>
               ) : f.isRenamed ? (
                 <div className="ml-4 flex items-center gap-1 text-[9px] font-bold text-yellow-700 bg-yellow-100 px-2 py-1 rounded uppercase whitespace-nowrap">
                   <AlertTriangle size={10} />
-                  Collision
+                  Modified
                 </div>
               ) : (
                 <div className="ml-4 text-[10px] font-mono text-slate-400 px-2 py-1 bg-slate-100 rounded whitespace-nowrap">

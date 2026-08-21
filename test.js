@@ -1,13 +1,35 @@
-const normalize = (str) => str.toLowerCase().replace(/[^a-z0-9]/g, '');
-const removeExtension = (str) => {
-  const dotIndex = str.lastIndexOf('.');
-  return dotIndex !== -1 ? str.substring(0, dotIndex) : str;
-};
+const MAX_FILENAME_LENGTH = 100;
+function truncateLikeApp(originalName) {
+    const cleanedName = originalName.replace(/[<>:"/\\|?*]/g, '_');
+    let baseName;
+    let extension;
+    const dotIndex = cleanedName.lastIndexOf('.');
+    if (dotIndex !== -1) {
+      baseName = cleanedName.substring(0, dotIndex);
+      extension = cleanedName.substring(dotIndex);
+    } else {
+      baseName = cleanedName;
+      extension = '';
+    }
+    let candidateName = cleanedName;
+    if (candidateName.length > MAX_FILENAME_LENGTH) {
+      const allowedBaseLength = Math.max(10, MAX_FILENAME_LENGTH - extension.length);
+      baseName = baseName.substring(0, allowedBaseLength);
+      candidateName = baseName + extension;
+    }
+    return candidateName;
+}
 
-const file = "ocr_About the Journal.CARI_IJCE.pdf";
-const excel1 = "ocr_About_the_Journal_CARI_IJCE"; // dot replaced by underscore, no ext
-const excel2 = "ocr_About_the_Journal.CARI_IJCE"; // has dot, no ext
+const normalize = (str) => (str || '').toLowerCase().replace(/[^a-z0-9]/g, '');
 
-console.log("File normOrigNoExt: ", normalize(removeExtension(file)));
-console.log("Excel1 normOldNoExt: ", normalize(removeExtension(excel1)));
-console.log("Excel2 normOldNoExt: ", normalize(removeExtension(excel2)));
+const fullExcelName = "Exhibit XX-31, Scholarly Article, AutoPilot AI — Architecting Self-Healing ML Systems with Reinforcement Feedback Loops, IEEE ICITEICS 2025, Dated...pdf";
+const osTruncatedName = "Exhibit XX-31, Scholarly Article, AutoPilot AI — Architecting Self-Healing ML Systems with Reinf.pdf";
+
+const appFlattened = truncateLikeApp(osTruncatedName);
+console.log("App Flattened: ", appFlattened);
+
+const excelTruncated = truncateLikeApp(fullExcelName);
+console.log("Excel Truncated: ", excelTruncated);
+
+console.log("Match?", normalize(appFlattened) === normalize(excelTruncated));
+

@@ -5,6 +5,38 @@
 
 import { ScanResult, ScannedFile, ConflictLog } from './types';
 
+export const MAX_FILENAME_LENGTH = 100; // Shorter limit for better system compatibility
+
+export function truncateFilename(originalName: string): { candidateName: string; baseName: string; extension: string; isModified: boolean; isTruncated: boolean } {
+  let isModified = false;
+  let isTruncated = false;
+  
+  const cleanedName = originalName.replace(/[<>:"/\\|?*]/g, '_');
+  if (cleanedName !== originalName) isModified = true;
+
+  let baseName: string;
+  let extension: string;
+  const dotIndex = cleanedName.lastIndexOf('.');
+  if (dotIndex !== -1) {
+    baseName = cleanedName.substring(0, dotIndex);
+    extension = cleanedName.substring(dotIndex);
+  } else {
+    baseName = cleanedName;
+    extension = '';
+  }
+
+  let candidateName = cleanedName;
+  if (candidateName.length > MAX_FILENAME_LENGTH) {
+    isModified = true;
+    isTruncated = true;
+    const allowedBaseLength = Math.max(10, MAX_FILENAME_LENGTH - extension.length);
+    baseName = baseName.substring(0, allowedBaseLength);
+    candidateName = baseName + extension;
+  }
+
+  return { candidateName, baseName, extension, isModified, isTruncated };
+}
+
 export function processFiles(fileList: FileList | File[]): ScanResult {
   const files: ScannedFile[] = [];
   const conflicts: ConflictLog[] = [];
@@ -14,8 +46,6 @@ export function processFiles(fileList: FileList | File[]): ScanResult {
 
   // Convert to Array and sort by path for consistency
   const fileArray = Array.from(fileList);
-
-  const MAX_FILENAME_LENGTH = 100; // Shorter limit for better system compatibility
 
   for (const file of fileArray) {
     totalSize += file.size;
@@ -28,37 +58,16 @@ export function processFiles(fileList: FileList | File[]): ScanResult {
     }
 
     const originalName = file.name;
-    let isRenamed = false;
+    const { candidateName, baseName, extension, isModified, isTruncated } = truncateFilename(originalName);
     
-    // 1. Clean illegal characters
-    // Remove characters that are illegal on Windows/MacOS/Linux file systems
-    const cleanedName = originalName.replace(/[<>:"/\\|?*]/g, '_');
-    if (cleanedName !== originalName) isRenamed = true;
-
-    // 2. Initial Shortening
-    let baseName: string;
-    let extension: string;
-    const dotIndex = cleanedName.lastIndexOf('.');
-    if (dotIndex !== -1) {
-      baseName = cleanedName.substring(0, dotIndex);
-      extension = cleanedName.substring(dotIndex);
-    } else {
-      baseName = cleanedName;
-      extension = '';
-    }
-
-    let candidateName = cleanedName;
-    if (candidateName.length > MAX_FILENAME_LENGTH) {
-      isRenamed = true;
-      const allowedBaseLength = Math.max(10, MAX_FILENAME_LENGTH - extension.length);
-      baseName = baseName.substring(0, allowedBaseLength);
-      candidateName = baseName + extension;
-    }
+    let isRenamed = isModified;
+    let isCollision = false;
 
     // 3. Collision Handling
     let finalName = candidateName;
     if (nameCounts[finalName] !== undefined) {
       isRenamed = true;
+      isCollision = true;
       nameCounts[candidateName]++;
       const count = nameCounts[candidateName];
       
@@ -81,7 +90,9 @@ export function processFiles(fileList: FileList | File[]): ScanResult {
       originalName,
       flattenedName: finalName,
       file,
-      isRenamed
+      isRenamed,
+      isCollision,
+      isTruncated
     });
   }
 
