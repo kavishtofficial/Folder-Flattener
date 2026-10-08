@@ -7,6 +7,21 @@ import { ScanResult, ScannedFile, ConflictLog } from './types';
 
 export const MAX_FILENAME_LENGTH = 100; // Shorter limit for better system compatibility
 
+export function isSystemOrJunkFile(fileName: string): boolean {
+  if (!fileName) return true;
+  const name = fileName.trim();
+  const lower = name.toLowerCase();
+
+  // OS metadata & thumbnail caches
+  if (name === '.DS_Store' || lower === 'thumbs.db' || lower === 'desktop.ini') return true;
+  if (name.startsWith('._')) return true; // AppleDouble resource fork
+
+  // Office & editor temporary lock files (e.g. ~$Document.docx, ~$Sheet.xlsx)
+  if (name.startsWith('~$') || name.startsWith('.~lock.')) return true;
+
+  return false;
+}
+
 export function truncateFilename(originalName: string): { candidateName: string; baseName: string; extension: string; isModified: boolean; isTruncated: boolean } {
   let isModified = false;
   let isTruncated = false;
@@ -48,6 +63,10 @@ export function processFiles(fileList: FileList | File[]): ScanResult {
   const fileArray = Array.from(fileList);
 
   for (const file of fileArray) {
+    if (isSystemOrJunkFile(file.name)) {
+      continue;
+    }
+
     totalSize += file.size;
     const path = file.webkitRelativePath || (file as any).customPath || file.name;
     const pathParts = path.split('/');

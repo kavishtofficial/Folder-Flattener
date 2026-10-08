@@ -10,15 +10,18 @@ import {
   Download, 
   RefreshCcw, 
   AlertTriangle,
+  AlertCircle,
   CheckCircle2,
   Loader2,
-  Trash2
+  Trash2,
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react';
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
 import * as XLSX from 'xlsx';
 import { ScanResult } from './types';
-import { processFiles, truncateFilename } from './utils';
+import { processFiles, truncateFilename, isSystemOrJunkFile } from './utils';
 import { StatsDisplay } from './components/StatsDisplay';
 import { FilePreview } from './components/FilePreview';
 
@@ -29,7 +32,11 @@ export default function App() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [isZipping, setIsZipping] = useState(false);
+  const [zipProgress, setZipProgress] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [unreadableFiles, setUnreadableFiles] = useState<Array<{ name: string; path: string; reason: string }>>([]);
+  const [showUnreadableList, setShowUnreadableList] = useState(false);
   const [bulkRenameCount, setBulkRenameCount] = useState(0);
   const [flattenFolders, setFlattenFolders] = useState(true);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -41,6 +48,9 @@ export default function App() {
 
     setIsProcessing(true);
     setSuccessMessage(null);
+    setErrorMessage(null);
+    setUnreadableFiles([]);
+    setZipProgress(null);
     
     setTimeout(() => {
       const result = processFiles(files);
@@ -55,6 +65,10 @@ export default function App() {
     setOriginalScanResult(null);
     setOutputName('Flattened_Archive_2026');
     setSuccessMessage(null);
+    setErrorMessage(null);
+    setUnreadableFiles([]);
+    setShowUnreadableList(false);
+    setZipProgress(null);
     setBulkRenameCount(0);
     if (fileInputRef.current) fileInputRef.current.value = '';
     if (renameInputRef.current) renameInputRef.current.value = '';
@@ -191,23 +205,39 @@ export default function App() {
     
     const traverse = async (entry: any, path: string = "") => {
       if (entry.isFile) {
-        const file = await new Promise<File>((resolve) => entry.file(resolve));
-        // Use a custom property instead of modifying protected webkitRelativePath
-        (file as any).customPath = path + file.name;
-        files.push(file);
+        const file = await new Promise<File | null>((resolve) => {
+          entry.file(
+            (f: File) => resolve(f),
+            (err: any) => {
+              console.warn('Could not read entry:', entry.name, err);
+              resolve(null);
+            }
+          );
+        });
+        if (file && !isSystemOrJunkFile(file.name)) {
+          // Use a custom property instead of modifying protected webkitRelativePath
+          (file as any).customPath = path + file.name;
+          files.push(file);
+        }
       } else if (entry.isDirectory) {
         const reader = entry.createReader();
         const entries = await new Promise<any[]>((resolve) => {
           const allEntries: any[] = [];
           const readEntries = () => {
-            reader.readEntries((results: any[]) => {
-              if (results.length) {
-                allEntries.push(...results);
-                readEntries();
-              } else {
+            reader.readEntries(
+              (results: any[]) => {
+                if (results.length) {
+                  allEntries.push(...results);
+                  readEntries();
+                } else {
+                  resolve(allEntries);
+                }
+              },
+              (err: any) => {
+                console.warn('Directory read error:', entry.name, err);
                 resolve(allEntries);
               }
-            });
+            );
           };
           readEntries();
         });
@@ -237,39 +267,121 @@ export default function App() {
   };
 
   const handleDownload = async () => {
-    if (!scanResult) return;
+    if (!scanResult || scanResult.files.length === 0) return;
 
     setIsZipping(true);
+    setZipProgress('Preparing files...');
+    setSuccessMessage(null);
+    setErrorMessage(null);
+    setUnreadableFiles([]);
+    setShowUnreadableList(false);
+
     const zip = new JSZip();
-    const folder = zip.folder(outputName || 'Flattened_Archive');
+    const folder = zip.folder(outputName.trim() || 'Flattened_Archive');
 
-    if (!folder) return;
+    if (!folder) {
+      setIsZipping(false);
+      setZipProgress(null);
+      return;
+    }
 
-    for (const f of scanResult.files) {
-      if (flattenFolders) {
-        folder.file(f.flattenedName, f.file);
-      } else {
-        const pathParts = f.originalPath.split('/');
-        if (pathParts.length > 1) {
-          pathParts.pop(); // remove original filename
-          const dirPath = pathParts.join('/');
-          folder.file(`${dirPath}/${f.flattenedName}`, f.file);
+    const unreadable: Array<{ name: string; path: string; reason: string }> = [];
+    let addedCount = 0;
+
+    // Helper to read file safely with arrayBuffer and fallback to FileReader
+    const readFileBuffer = async (file: File): Promise<ArrayBuffer> => {
+      try {
+        return await file.arrayBuffer();
+      } catch (err1) {
+        return await new Promise<ArrayBuffer>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => {
+            if (reader.result instanceof ArrayBuffer) {
+              resolve(reader.result);
+            } else {
+              reject(new Error('Invalid buffer format'));
+            }
+          };
+          reader.onerror = () => reject(reader.error || new Error('FileReader failed'));
+          reader.readAsArrayBuffer(file);
+        });
+      }
+    };
+
+    // Read and verify all files into memory buffers
+    for (let i = 0; i < scanResult.files.length; i++) {
+      const f = scanResult.files[i];
+      setZipProgress(`Reading file ${i + 1} of ${scanResult.files.length}...`);
+
+      let buffer: ArrayBuffer | null = null;
+      try {
+        buffer = await readFileBuffer(f.file);
+      } catch (readErr: any) {
+        console.warn(`Could not read file: ${f.originalPath}`, readErr);
+        unreadable.push({
+          name: f.flattenedName,
+          path: f.originalPath,
+          reason: readErr?.name === 'NotFoundError'
+            ? 'File missing, offline in cloud (OneDrive/iCloud), or locked by another program'
+            : (readErr?.message || 'Access error')
+        });
+      }
+
+      if (buffer) {
+        if (flattenFolders) {
+          folder.file(f.flattenedName, buffer);
         } else {
-          folder.file(f.flattenedName, f.file);
+          const pathParts = f.originalPath.split('/');
+          if (pathParts.length > 1) {
+            pathParts.pop(); // remove original filename
+            const dirPath = pathParts.join('/');
+            folder.file(`${dirPath}/${f.flattenedName}`, buffer);
+          } else {
+            folder.file(f.flattenedName, buffer);
+          }
         }
+        addedCount++;
       }
     }
 
+    if (addedCount === 0) {
+      setIsZipping(false);
+      setZipProgress(null);
+      setErrorMessage(
+        'None of the files could be read from disk. If your folder is in OneDrive, iCloud, or Google Drive, make sure the files are downloaded locally (not cloud-only/Files On-Demand) and not locked in another application, then try again.'
+      );
+      setUnreadableFiles(unreadable);
+      return;
+    }
+
     try {
-      const content = await zip.generateAsync({ type: 'blob' });
+      setZipProgress('Compressing archive...');
+      const content = await zip.generateAsync(
+        { 
+          type: 'blob',
+          compression: 'DEFLATE',
+          compressionOptions: { level: 6 }
+        },
+        (metadata) => {
+          setZipProgress(`Packaging zip (${Math.round(metadata.percent)}%)...`);
+        }
+      );
       const finalName = (outputName || 'Flattened_Archive').trim();
       saveAs(content, `${finalName}.zip`);
-      
-      setSuccessMessage(`Download Complete! ${scanResult.files.length} files saved.`);
-    } catch (error) {
+
+      if (unreadable.length > 0) {
+        setUnreadableFiles(unreadable);
+        setSuccessMessage(`Saved ${addedCount} of ${scanResult.files.length} files (${unreadable.length} skipped due to OS/cloud lock).`);
+      } else {
+        setUnreadableFiles([]);
+        setSuccessMessage(`Download Complete! All ${addedCount} files saved.`);
+      }
+    } catch (error: any) {
       console.error('Zipping failed:', error);
+      setErrorMessage(`Failed to generate zip: ${error?.message || 'Unknown error'}`);
     } finally {
       setIsZipping(false);
+      setZipProgress(null);
     }
   };
 
@@ -455,11 +567,61 @@ export default function App() {
                 disabled={!scanResult || isZipping}
                 className="w-full bg-slate-900 text-white py-4 rounded-xl font-bold shadow-lg hover:bg-slate-800 active:transform active:scale-[0.98] transition-all flex items-center justify-center space-x-2 disabled:bg-slate-200 disabled:shadow-none"
               >
-                <span>{isZipping ? 'Processing...' : (flattenFolders ? 'Flatten & Download' : 'Download Folder')}</span>
+                <span>{isZipping ? (zipProgress || 'Processing...') : (flattenFolders ? 'Flatten & Download' : 'Download Folder')}</span>
                 {isZipping ? <RefreshCcw className="animate-spin text-white" size={18} /> : <span className="text-lg">🚀</span>}
               </button>
               
               <AnimatePresence>
+                {errorMessage && (
+                  <motion.div 
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0 }}
+                    className="mt-4 p-3 bg-red-50 border border-red-200 rounded-xl flex items-start space-x-2 text-left"
+                  >
+                    <AlertCircle className="text-red-500 shrink-0 mt-0.5" size={14} />
+                    <span className="text-[11px] leading-tight text-red-700 font-medium">{errorMessage}</span>
+                  </motion.div>
+                )}
+
+                {unreadableFiles.length > 0 && (
+                  <motion.div 
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0 }}
+                    className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-xl text-left"
+                  >
+                    <div className="flex items-start space-x-2">
+                      <AlertTriangle className="text-amber-600 shrink-0 mt-0.5" size={14} />
+                      <div className="flex-1">
+                        <div className="text-[11px] font-bold text-amber-800">
+                          {unreadableFiles.length} file(s) could not be read by the browser
+                        </div>
+                        <p className="text-[10px] text-amber-700 mt-1 leading-relaxed">
+                          This happens when files are stored offline in cloud storage (OneDrive/iCloud &ldquo;Files On-Demand&rdquo;) or locked open in an editor (like Microsoft Word or Adobe Acrobat).
+                        </p>
+                        <button 
+                          type="button"
+                          onClick={() => setShowUnreadableList(!showUnreadableList)}
+                          className="mt-2 text-[10px] font-bold text-amber-900 flex items-center space-x-1 hover:underline"
+                        >
+                          <span>{showUnreadableList ? 'Hide' : 'Show'} skipped files</span>
+                          {showUnreadableList ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                        </button>
+                        {showUnreadableList && (
+                          <div className="mt-2 max-h-28 overflow-y-auto custom-scrollbar bg-white/70 p-2 rounded border border-amber-200 space-y-1">
+                            {unreadableFiles.map((uf, idx) => (
+                              <div key={idx} className="text-[9px] text-amber-900 font-mono truncate" title={uf.path}>
+                                • {uf.name}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </motion.div>
+                )}
+
                 {successMessage && (
                   <motion.div 
                     initial={{ opacity: 0, y: 10 }}
